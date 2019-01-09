@@ -1,0 +1,22 @@
+name:                twidlk
+version:             0.0.0.1
+synopsis:            Twiddler multitool
+-- description:         
+license:             GPL-3
+-- license-file:        LICENSE
+author:              Evan Danaher
+maintainer:          github@edanaher.net
+-- copyright:           
+--category:            
+build-type:          Simple
+--extra-source-files:  ChangeLog.md
+cabal-version:       >=1.10
+
+executable twidlk
+  main-is:             Main.hs
+  ghc-options: -threaded
+  -- other-modules:       
+  -- other-extensions:    
+  build-depends:       base == 4.*
+  hs-source-dirs:      src
+  default-language:    Haskell2010
