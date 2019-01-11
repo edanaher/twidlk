@@ -4,7 +4,7 @@ module Main where
 
 import qualified Data.Binary.Get as G
 import qualified Data.ByteString.Lazy as BL
-import Data.Bits ((.&.))
+import Data.Bits ((.&.), shiftL)
 import System.Environment (getArgs)
 
 data TwiddlerConfig = TwiddlerConfig {
@@ -24,21 +24,31 @@ data TwiddlerConfig = TwiddlerConfig {
     keyRepeatDelay :: Int,
 
     nchords :: Int,
-    chords :: [(Int, Int)]
+    chords :: [([Int], ChordOutput)]
   }
   deriving Show
 
 data ChordOutput =
     SingleChord { modifier :: Int, keyCode :: Int }
-  | MultipleCord { stringIndex :: Int }
+  | MultipleChord { stringIndex :: Int }
+  deriving Show
 
-data RawChord = RawChord { keys :: Int, output :: ChordOutput }
+data RawChord = RawChord { keys :: [Int], output :: ChordOutput }
+  deriving Show
 
-readChord :: G.Get (Int, Int)
+readChord :: G.Get ([Int], ChordOutput)
 readChord = do
-  keys <- fromIntegral <$> G.getWord16le
-  mapping <- fromIntegral <$> G.getWord16le
-  return (keys, mapping)
+  rawKeys <- fromIntegral <$> G.getWord16le :: G.Get Int
+  keys <- return $ [i | i <- [0..15], rawKeys .&. (1 `shiftL` i) /= 0]
+
+  mappingH <- fromIntegral <$> G.getWord8
+  mappingL <- fromIntegral <$> G.getWord8
+
+  chord <- return $ case mappingL of
+            0xFF -> MultipleChord mappingH
+            _ -> SingleChord { modifier = mappingL, keyCode = mappingH }
+
+  return (keys, chord)
 
 readConfig :: BL.ByteString -> TwiddlerConfig
 readConfig contents = flip G.runGet contents $ do
