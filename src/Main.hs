@@ -24,10 +24,21 @@ data TwiddlerConfig = TwiddlerConfig {
     keyRepeatDelay :: Int,
 
     nchords :: Int,
-    chords :: [Int]
+    chords :: [(Int, Int)]
   }
   deriving Show
 
+data ChordOutput =
+    SingleChord { modifier :: Int, keyCode :: Int }
+  | MultipleCord { stringIndex :: Int }
+
+data RawChord = RawChord { keys :: Int, output :: ChordOutput }
+
+readChord :: G.Get (Int, Int)
+readChord = do
+  keys <- fromIntegral <$> G.getWord16le
+  mapping <- fromIntegral <$> G.getWord16le
+  return (keys, mapping)
 
 readConfig :: BL.ByteString -> TwiddlerConfig
 readConfig contents = flip G.runGet contents $ do
@@ -54,6 +65,8 @@ readConfig contents = flip G.runGet contents $ do
   flagsA <- fromIntegral <$> G.getWord8 :: G.Get Int
   hapticFeedback <- return $ flagsA .&. 0x01 /= 0
 
+  chords <- mapM (\() -> readChord) (take nchords $ repeat ())
+
   return $ TwiddlerConfig {
     keyRepeat = keyRepeat,
     directKey = directKey,
@@ -69,7 +82,7 @@ readConfig contents = flip G.runGet contents $ do
     mouseAccelFactor = mouseAccelFactor,
     keyRepeatDelay = keyRepeatDelay,
     hapticFeedback = hapticFeedback,
-    chords = [] }
+    chords = chords }
 
 main :: IO ()
 main = do
