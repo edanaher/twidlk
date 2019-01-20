@@ -120,7 +120,11 @@ generateTextForKeys keys =
 
 usbHidToText :: Int -> String
 usbHidToText n = case n of
-  n | n >= 0x04 && n <= 0x1d -> [chr (n - 4 + (ord 'a'))]
+  n | n >= 0x04 && n <= 0x1d -> [chr (n - 0x04 + (ord 'a'))]
+  n | n >= 0x1e && n <= 0x26 -> [chr (n - 0x1e + (ord '1'))]
+  0x27 -> "0"
+  0x2a -> "<backspace>"
+  0x2c -> "<space>"
   _ -> "0x" ++ showHex n ""
 
 
