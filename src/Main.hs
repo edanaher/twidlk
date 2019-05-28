@@ -13,6 +13,8 @@ import System.Environment (getArgs)
 import Debug.Trace (trace)
 
 data TwiddlerConfig = TwiddlerConfig {
+    stringLocations :: [Int],
+    strings :: [[ChordOutput]],
     keyRepeat :: Bool,
     directKey :: Bool,
     joystickLeftClick :: Bool,
@@ -35,25 +37,41 @@ data TwiddlerConfig = TwiddlerConfig {
 
 data ChordOutput =
     SingleChord { modifier :: Int, keyCode :: Int }
-  | MultipleChord { stringIndex :: Int }
+  | MultipleChordIndex { stringIndex :: Int }
+  | MultipleChord [ChordOutput]
   deriving Show
 
 data RawChord = RawChord { keys :: [Int], output :: ChordOutput }
   deriving Show
+
+readChordMapping :: G.Get ChordOutput
+readChordMapping = do
+  mappingL <- fromIntegral <$> G.getWord8
+  mappingH <- fromIntegral <$> G.getWord8
+
+  return $ case mappingL of
+      0xFF -> MultipleChordIndex mappingH
+      _ -> SingleChord { modifier = mappingL, keyCode = mappingH }
 
 readChord :: G.Get RawChord
 readChord = do
   rawKeys <- fromIntegral <$> G.getWord16le :: G.Get Int
   keys <- return $ [i | i <- [0..15], rawKeys .&. (1 `shiftL` i) /= 0]
 
-  mappingL <- fromIntegral <$> G.getWord8
-  mappingH <- fromIntegral <$> G.getWord8
-
-  chord <- return $ case mappingL of
-            0xFF -> MultipleChord mappingH
-            _ -> SingleChord { modifier = mappingL, keyCode = mappingH }
+  chord <- readChordMapping
 
   return $ RawChord keys chord
+
+readLocation :: G.Get Int
+readLocation = do
+  fromIntegral <$> G.getWord32le :: G.Get Int
+
+readStringContents :: BL.ByteString -> Int -> [ChordOutput]
+readStringContents contents offset =
+  let tail = BL.drop (fromIntegral offset) contents in
+  flip G.runGet tail $ do
+    len <- fromIntegral <$> G.getWord16le
+    mapM (\() -> readChordMapping) (take (len `div` 2 - 1) $ repeat ())
 
 readConfig :: BL.ByteString -> TwiddlerConfig
 readConfig contents = flip G.runGet contents $ do
@@ -83,7 +101,20 @@ readConfig contents = flip G.runGet contents $ do
 
   chords <- mapM (\() -> readChord) (take nchords $ repeat ())
 
+  maxStringLocation <- return $ foldl (\n c -> max n $ case output c of MultipleChordIndex i -> i; _ -> 0) 0 chords
+  stringLocations <- mapM (\() -> readLocation) (take (maxStringLocation + 1) $ repeat ())
+  strings <- return $ map (readStringContents contents) stringLocations
+
+  chords' <- return $ flip map chords $ \(RawChord keys output) -> case output of
+    MultipleChordIndex i -> RawChord keys (MultipleChord $ readStringContents contents (stringLocations !! i))
+    _ -> RawChord keys output
+
+
+
+
   return $ TwiddlerConfig {
+    stringLocations = stringLocations,
+    strings = strings,
     keyRepeat = keyRepeat,
     directKey = directKey,
     joystickLeftClick = joystickLeftClick,
@@ -98,7 +129,7 @@ readConfig contents = flip G.runGet contents $ do
     mouseAccelFactor = mouseAccelFactor,
     keyRepeatDelay = keyRepeatDelay,
     hapticFeedback = hapticFeedback,
-    chords = chords }
+    chords = chords' }
 
 generateTextForKeys :: [Int] -> String
 generateTextForKeys keys =
@@ -140,10 +171,13 @@ generateTextConfig config =
                  (if m .&. 0x40 /= 0 then "A" else "") ++
                  (if m .&. 0x80 /= 0 then "4" else "")
         in if m' == "" then "" else m' ++ "-"
+      renderSingleChord (SingleChord m c) = renderModifiers m ++ usbHidToText c
+      renderSingleChord _ = error "Rending multichord as singlechord"
       renderChord (RawChord { keys=keys, output = output }) =
         case output of
-          SingleChord m c -> generateTextForKeys keys ++ ": " ++ renderModifiers m ++ usbHidToText c
-          MultipleChord m -> generateTextForKeys keys ++ ": " ++ show output
+          SingleChord m c -> generateTextForKeys keys ++ ": " ++ renderSingleChord output
+          MultipleChordIndex m -> generateTextForKeys keys ++ ": " ++ show output
+          MultipleChord m -> generateTextForKeys keys ++ ": " ++ intercalate " " (map renderSingleChord m)
   in
   map renderChord (chords config)
 
