@@ -149,14 +149,69 @@ generateTextForKeys keys =
   in
   modifier ++ (intercalate "" [generateRow n | n <- [0..3]])
 
-usbHidToText :: Int -> String
-usbHidToText n = case n of
-  n | n >= 0x04 && n <= 0x1d -> [chr (n - 0x04 + (ord 'a'))]
-  n | n >= 0x1e && n <= 0x26 -> [chr (n - 0x1e + (ord '1'))]
-  0x27 -> "0"
-  0x2a -> "<backspace>"
-  0x2c -> "<space>"
-  _ -> "0x" ++ showHex n ""
+usbHidToText :: Bool -> Int -> (Bool, String)
+usbHidToText shift n = case (shift, n) of
+  (False, n) | n >= 0x04 && n <= 0x1d -> (False, [chr (n - 0x04 + (ord 'a'))])
+  (True, n) | n >= 0x04 && n <= 0x1d -> (False, [chr (n - 0x04 + (ord 'A'))])
+  (False, n) | n >= 0x1e && n <= 0x26 -> (shift, [chr (n - 0x1e + (ord '1'))])
+  (False, 0x27) -> (False, "0")
+  (shift, n) | n >= 0x3a && n <= 0x45 -> (shift, "F" ++ show (n - 0x39))
+  (True, 0x1e) -> (False, "!")
+  (True, 0x1f) -> (False, "@")
+  (True, 0x20) -> (False, "#")
+  (True, 0x21) -> (False, "$")
+  (True, 0x22) -> (False, "%")
+  (True, 0x23) -> (False, "^")
+  (True, 0x24) -> (False, "&")
+  (True, 0x25) -> (False, "*")
+  (True, 0x26) -> (False, "(")
+  (True, 0x27) -> (False, ")")
+  (_, 0x28) -> (shift, "<return>")
+  (_, 0x29) -> (shift, "<escape>")
+  (_, 0x2a) -> (shift, "<backspace>")
+  (_, 0x2b) -> (shift, "<tab>")
+  (_, 0x2c) -> (shift, "<space>")
+  (False, 0x2d) -> (False, "-")
+  (True, 0x2d) -> (False, "_")
+  (False, 0x2e) -> (False, "=")
+  (True, 0x2e) -> (False, "+")
+  (False, 0x2f) -> (False, "[")
+  (True, 0x2f) -> (False, "{")
+  (False, 0x30) -> (False, "]")
+  (True, 0x30) -> (False, "}")
+  (False, 0x31) -> (False, "\\")
+  (True, 0x31) -> (False, "|")
+  -- 0x32: "Non-US # and ~"
+  (False, 0x33) -> (False, ";")
+  (True, 0x33) -> (False, ":")
+  (False, 0x34) -> (False, "'")
+  (True, 0x34) -> (False, "\"")
+  (False, 0x35) -> (False, "`")
+  (True, 0x35) -> (False, "~")
+  (False, 0x35) -> (False, "`")
+  (True, 0x35) -> (False, "~")
+  (False, 0x36) -> (False, ",")
+  (True, 0x36) -> (False, "<")
+  (False, 0x37) -> (False, ".")
+  (True, 0x37) -> (False, ">")
+  (False, 0x38) -> (False, "/")
+  (True, 0x38) -> (False, "?")
+  (shift, 0x39) -> (shift, "<capslock>")
+  (shift, 0x46) -> (shift, "<printscreen>")
+  (shift, 0x47) -> (shift, "<scrolllock>")
+  (shift, 0x48) -> (shift, "<pause>")
+  (shift, 0x49) -> (shift, "<insert>")
+  (shift, 0x4a) -> (shift, "<home>")
+  (shift, 0x4b) -> (shift, "<pageup>")
+  (shift, 0x4c) -> (shift, "<delete>")
+  (shift, 0x4d) -> (shift, "<end>")
+  (shift, 0x4e) -> (shift, "<pagedown>")
+  (shift, 0x4f) -> (shift, "<right>")
+  (shift, 0x50) -> (shift, "<left>")
+  (shift, 0x51) -> (shift, "<down>")
+  (shift, 0x52) -> (shift, "<up>")
+  (shift, 0x53) -> (shift, "<numlock>")
+  _ -> (shift, "<0x" ++ showHex n ">")
 
 
 generateTextConfig :: TwiddlerConfig -> [String]
@@ -171,13 +226,15 @@ generateTextConfig config =
                  (if m .&. 0x40 /= 0 then "A" else "") ++
                  (if m .&. 0x80 /= 0 then "4" else "")
         in if m' == "" then "" else m' ++ "-"
-      renderSingleChord (SingleChord m c) = renderModifiers m ++ usbHidToText c
+      renderSingleChord (SingleChord m c) =
+        let (shift, c') = usbHidToText (m .&. 0x22 /= 0) c
+        in renderModifiers (m .&. (if shift then 0xFF else 0xDD)) ++ c'
       renderSingleChord _ = error "Rending multichord as singlechord"
       renderChord (RawChord { keys=keys, output = output }) =
         case output of
           SingleChord m c -> generateTextForKeys keys ++ ": " ++ renderSingleChord output
           MultipleChordIndex m -> generateTextForKeys keys ++ ": " ++ show output
-          MultipleChord m -> generateTextForKeys keys ++ ": " ++ intercalate " " (map renderSingleChord m)
+          MultipleChord m -> generateTextForKeys keys ++ ": " ++ intercalate "" (map renderSingleChord m)
   in
   map renderChord (chords config)
 
