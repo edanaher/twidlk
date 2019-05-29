@@ -134,12 +134,17 @@ readConfig contents = flip G.runGet contents $ do
 generateTextForKeys :: [Int] -> String
 generateTextForKeys keys =
   let generateRow n =
-        let keys' = [k - 4*n | k <- keys, k > 4*n, k < 4*(n+1)] in
-        case keys' of
-          [] -> "0"
-          (1:r) -> "L"
-          (2:r) -> "M"
-          (3:r) -> "R"
+        let keys' = [k - 4*n | k <- keys, k > 4*n, k < 4*(n+1)]
+            letters k =
+              case k of
+                [] -> ""
+                (1:r) -> 'L':letters r
+                (2:r) -> 'M':letters r
+                (3:r) -> 'R':letters r in
+        case letters keys' of
+          [] -> "O"
+          [k] -> [k]
+          letters -> "(" ++ letters ++ ")"
       modifiers = (if 0  `elem` keys then "N" else "") ++
                   (if 4  `elem` keys then "A" else "") ++
                   (if 8  `elem` keys then "C" else "") ++
@@ -186,8 +191,6 @@ usbHidToText shift n = case (shift, n) of
   (True, 0x33) -> (False, ":")
   (False, 0x34) -> (False, "'")
   (True, 0x34) -> (False, "\"")
-  (False, 0x35) -> (False, "`")
-  (True, 0x35) -> (False, "~")
   (False, 0x35) -> (False, "`")
   (True, 0x35) -> (False, "~")
   (False, 0x36) -> (False, ",")
