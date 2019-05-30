@@ -13,8 +13,6 @@ import System.Environment (getArgs)
 import Debug.Trace (trace)
 
 data TwiddlerConfig = TwiddlerConfig {
-    stringLocations :: [Int],
-    strings :: [[ChordOutput]],
     keyRepeat :: Bool,
     directKey :: Bool,
     joystickLeftClick :: Bool,
@@ -103,18 +101,13 @@ readConfig contents = flip G.runGet contents $ do
 
   maxStringLocation <- return $ foldl (\n c -> max n $ case output c of MultipleChordIndex i -> i; _ -> 0) 0 chords
   stringLocations <- mapM (\() -> readLocation) (take (maxStringLocation + 1) $ repeat ())
-  strings <- return $ map (readStringContents contents) stringLocations
 
   chords' <- return $ flip map chords $ \(RawChord keys output) -> case output of
     MultipleChordIndex i -> RawChord keys (MultipleChord $ readStringContents contents (stringLocations !! i))
     _ -> RawChord keys output
 
 
-
-
   return $ TwiddlerConfig {
-    stringLocations = stringLocations,
-    strings = strings,
     keyRepeat = keyRepeat,
     directKey = directKey,
     joystickLeftClick = joystickLeftClick,
