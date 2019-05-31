@@ -251,6 +251,8 @@ generateBinConfig config =
           filter (\(RawChord _ output) -> case output of
               MultipleChord _ -> True
               _ -> False) $ chords config
+      baseStringContentLocation = 16 + 4 * length (chords config) + 4 * length stringContents
+      stringLocations = reverse $ snd $ foldl (\(last, acc) str -> (last + 2 + 2*length str, last:acc)) (baseStringContentLocation, []) stringContents
       chordToInt :: RawChord -> P.Put
       chordToInt (RawChord keys output) = do
         P.putWord16le $ foldl (+) 0 $ map (1 `shiftL`) keys
@@ -264,6 +266,14 @@ generateBinConfig config =
 
       -- TODO: Sort the chords "in ascending order of Chord Representation Value"
       chordsTable = mapM_ chordToInt $ chords config
+      writeStringContent :: [ChordOutput] -> P.Put
+      writeStringContent cs = do
+        P.putWord16le $ fromIntegral $ 2 + 2 * length cs
+        flip mapM_ cs $ \output -> case output of
+          SingleChord m k -> do
+            P.putWord8 $ fromIntegral m
+            P.putWord8 $ fromIntegral k
+          _ -> error "Non-single chord in MCC"
   in P.runPut $ do
   P.putWord8 5
   P.putWord8 $ flags
@@ -277,6 +287,8 @@ generateBinConfig config =
   P.putWord8 0
   P.putWord8 $ if hapticFeedback config then 1 else 0
   chordsTable
+  mapM_ (P.putWord32le . fromIntegral) stringLocations
+  mapM_ (writeStringContent) stringContents
 
 main :: IO ()
 main = do
