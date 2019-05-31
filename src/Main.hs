@@ -7,7 +7,8 @@ import qualified Data.Binary.Put as P
 import qualified Data.ByteString.Lazy as BL
 import Data.Bits ((.&.), shiftL)
 import Data.Char (chr, ord)
-import Data.List (intercalate)
+import Data.List (intercalate, elemIndex)
+import Data.Maybe (fromJust)
 import Numeric (showHex)
 import System.Environment (getArgs)
 
@@ -38,7 +39,7 @@ data ChordOutput =
     SingleChord { modifier :: Int, keyCode :: Int }
   | MultipleChordIndex { stringIndex :: Int }
   | MultipleChord [ChordOutput]
-  deriving Show
+  deriving (Show, Eq)
 
 data RawChord = RawChord { keys :: [Int], output :: ChordOutput }
   deriving Show
@@ -245,6 +246,11 @@ generateBinConfig config =
         flagInt 3 $ disableBluetooth config,
         flagInt 4 $ stickyNum config,
         flagInt 7 $ stickyShift config]
+      -- TODO: Dedupe repeated stringContents
+      stringContents = map (\(RawChord _ (MultipleChord cs)) -> cs) $
+          filter (\(RawChord _ output) -> case output of
+              MultipleChord _ -> True
+              _ -> False) $ chords config
       chordToInt :: RawChord -> P.Put
       chordToInt (RawChord keys output) = do
         P.putWord16le $ foldl (+) 0 $ map (1 `shiftL`) keys
@@ -254,7 +260,7 @@ generateBinConfig config =
             P.putWord8 $ fromIntegral k
           MultipleChord mcc -> do
             P.putWord8 0xFF
-            P.putWord8 0
+            P.putWord8 $ fromIntegral $ fromJust $ elemIndex mcc stringContents
 
       -- TODO: Sort the chords "in ascending order of Chord Representation Value"
       chordsTable = mapM_ chordToInt $ chords config
