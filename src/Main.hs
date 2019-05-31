@@ -3,6 +3,7 @@
 module Main where
 
 import qualified Data.Binary.Get as G
+import qualified Data.Binary.Put as P
 import qualified Data.ByteString.Lazy as BL
 import Data.Bits ((.&.), shiftL)
 import Data.Char (chr, ord)
@@ -234,6 +235,43 @@ generateTextConfig config =
   in
   map renderChord (chords config)
 
+generateBinConfig :: TwiddlerConfig -> BL.ByteString
+generateBinConfig config =
+  let flagInt n b = if b then 1 `shiftL` n else 0
+      flags =  foldl (+) 0 [
+        flagInt 0 $ keyRepeat config,
+        flagInt 1 $ directKey config,
+        flagInt 2 $ joystickLeftClick config,
+        flagInt 3 $ disableBluetooth config,
+        flagInt 4 $ stickyNum config,
+        flagInt 7 $ stickyShift config]
+      chordToInt :: RawChord -> P.Put
+      chordToInt (RawChord keys output) = do
+        P.putWord16le $ foldl (+) 0 $ map (1 `shiftL`) keys
+        case output of
+          SingleChord m k -> do
+            P.putWord8 $ fromIntegral m
+            P.putWord8 $ fromIntegral k
+          MultipleChord mcc -> do
+            P.putWord8 0xFF
+            P.putWord8 0
+
+      -- TODO: Sort the chords "in ascending order of Chord Representation Value"
+      chordsTable = mapM_ chordToInt $ chords config
+  in P.runPut $ do
+  P.putWord8 5
+  P.putWord8 $ flags
+  P.putWord16le $ fromIntegral $ nchords config
+  P.putWord16le $ fromIntegral $ sleepTimeout config
+  P.putWord16le $ fromIntegral $ mouseLeftClickAction config
+  P.putWord16le $ fromIntegral $ mouseMiddleClickAction config
+  P.putWord16le $ fromIntegral $ mouseRightClickAction config
+  P.putWord8 $ fromIntegral $ mouseAccelFactor config
+  P.putWord8 $ fromIntegral $ keyRepeatDelay config
+  P.putWord8 0
+  P.putWord8 $ if hapticFeedback config then 1 else 0
+  chordsTable
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -242,5 +280,5 @@ main = do
       _ -> error "Requires a filename as argument"
   contents <- BL.readFile filename
   config <- return $ readConfig contents
-  print config
   putStr $ unlines $ generateTextConfig config
+  BL.writeFile "output.cfg" $ generateBinConfig config
