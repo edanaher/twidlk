@@ -230,10 +230,25 @@ generateTextConfig config =
       renderSingleChord _ = error "Rending multichord as singlechord"
       renderChord (RawChord { keys=keys, output = output }) =
         case output of
-          SingleChord m c -> generateTextForKeys keys ++ ": " ++ renderSingleChord output
-          MultipleChordIndex m -> generateTextForKeys keys ++ ": " ++ show output
-          MultipleChord m -> generateTextForKeys keys ++ ": " ++ intercalate "" (map renderSingleChord m)
+          SingleChord m c -> generateTextForKeys keys ++ " " ++ renderSingleChord output
+          MultipleChordIndex m -> generateTextForKeys keys ++ " " ++ show output
+          MultipleChord m -> generateTextForKeys keys ++ " " ++ intercalate "" (map renderSingleChord m)
+      renderField field = if field config then "1" else "0"
   in
+  ["version 0",
+   "keyRepeat " ++ renderField keyRepeat,
+   "directKey " ++ renderField directKey,
+   "joystickLeftClick " ++ renderField joystickLeftClick,
+   "disableBluetooth " ++ renderField disableBluetooth,
+   "stickyNum " ++ renderField stickyNum,
+   "stickyShift " ++ renderField stickyShift,
+   "hapticFeedback " ++ renderField hapticFeedback,
+   "sleepTimeout " ++ show (sleepTimeout config),
+   "mouseLeftClickAction " ++ show (mouseLeftClickAction config),
+   "mouseMiddleClickAction " ++ show (mouseMiddleClickAction config),
+   "mouseRightClickAction " ++ show (mouseRightClickAction config),
+   "mouseAccelFactor " ++ show (mouseAccelFactor config),
+   "keyRepeatDelay " ++ show (keyRepeatDelay config)] ++
   map renderChord (chords config)
 
 generateBinConfig :: TwiddlerConfig -> BL.ByteString
