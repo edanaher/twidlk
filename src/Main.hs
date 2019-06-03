@@ -313,5 +313,5 @@ main = do
       _ -> error "Requires a filename as argument"
   contents <- BL.readFile filename
   config <- return $ readConfig contents
-  putStr $ unlines $ generateTextConfig config
+  writeFile "output.txt" $ unlines $ generateTextConfig config
   BL.writeFile "output.cfg" $ generateBinConfig config
