@@ -5,9 +5,10 @@ module Main where
 import qualified Data.Binary.Get as G
 import qualified Data.Binary.Put as P
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BL.Char8
 import Data.Bits ((.&.), shiftL)
-import Data.Char (chr, ord)
-import Data.List (intercalate, elemIndex)
+import Data.Char (chr, ord, isSpace)
+import Data.List (intercalate, elemIndex, find)
 import Data.Maybe (fromJust)
 import Numeric (showHex)
 import System.Environment (getArgs)
@@ -126,6 +127,62 @@ readConfig contents = flip G.runGet contents $ do
     hapticFeedback = hapticFeedback,
     chords = chords' }
 
+flagFields = [
+  "version",
+  "keyRepeat",
+  "directKey",
+  "joystickLeftClick",
+  "disableBluetooth",
+  "stickyNum",
+  "stickyShift",
+  "nchords",
+  "sleepTimeout",
+  "mouseLeftClickAction",
+  "mouseMiddleClickAction",
+  "mouseRightClickAction",
+  "mouseAccelFactor",
+  "keyRepeatDelay",
+  "hapticFeedback"
+  ]
+
+readTextConfig :: BL.ByteString -> TwiddlerConfig
+readTextConfig contents =
+  let trim = dropWhile isSpace
+      conf = lines $ BL.Char8.unpack contents
+      split s = (takeWhile (not . isSpace) (trim s), trim (dropWhile (not . isSpace) $ trim s))
+      parseModifiers k = case k of
+        [] -> []
+        ('N':r) -> 0:parseModifiers r
+        ('A':r) -> 4:parseModifiers r
+        ('C':r) -> 8:parseModifiers r
+        ('S':r) -> 12:parseModifiers r
+        (c:r) -> error $ "Unknown modifier" ++ [c]
+      parseMainChord :: String -> Int -> [Int]
+      parseMainChord k n = if n == 4 then [] else
+        let parseLetter l = case l of
+              'O' -> []
+              'L' -> [4*n + 1]
+              'M' -> [4*n + 2]
+              'R' -> [4*n + 3]
+              _ -> error $ "Unexpected key: " ++ [l]
+        in case k of
+          '(':r ->
+            let prefix = tail $ takeWhile (not . (== ')')) k
+                suffix = tail $ dropWhile (not . (== ')')) k in
+                concatMap parseLetter prefix ++ parseMainChord suffix (n+1)
+          l:r -> parseLetter l ++ parseMainChord r (n + 1)
+      parseChord k = case find (== '+') k of
+        Nothing -> parseMainChord k 0
+        Just _ -> parseModifiers (takeWhile (not . (== '+')) k) ++ parseMainChord (tail $ dropWhile (not . (== '+')) k) 0
+      parseRow row = case split row of
+        (key, value) -> case find (== key) flagFields of
+          Just f -> Left (key, value)
+          Nothing -> Right (parseChord key, value)
+      parsed = map parseRow conf
+  in
+  trace (show parsed)
+  error "Uhoh"
+
 generateTextForKeys :: [Int] -> String
 generateTextForKeys keys =
   let generateRow n =
@@ -155,7 +212,7 @@ usbHidToText shift n = case (shift, n) of
   (True, n) | n >= 0x04 && n <= 0x1d -> (False, [chr (n - 0x04 + (ord 'A'))])
   (False, n) | n >= 0x1e && n <= 0x26 -> (shift, [chr (n - 0x1e + (ord '1'))])
   (False, 0x27) -> (False, "0")
-  (shift, n) | n >= 0x3a && n <= 0x45 -> (shift, "F" ++ show (n - 0x39))
+  (shift, n) | n >= 0x3a && n <= 0x45 -> (shift, "<F" ++ show (n - 0x39) ++ ">")
   (True, 0x1e) -> (False, "!")
   (True, 0x1f) -> (False, "@")
   (True, 0x20) -> (False, "#")
@@ -312,6 +369,10 @@ main = do
       [ f ] -> return f
       _ -> error "Requires a filename as argument"
   contents <- BL.readFile filename
-  config <- return $ readConfig contents
+  config <-
+    if BL.take 9 contents == BL.Char8.pack "version 0" then
+      return $ readTextConfig contents
+    else
+      return $ readConfig contents
   writeFile "output.txt" $ unlines $ generateTextConfig config
   BL.writeFile "output.cfg" $ generateBinConfig config
