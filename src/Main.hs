@@ -9,6 +9,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL.Char8
 import Data.Bits ((.&.), shiftL)
 import Data.Char (chr, ord, isSpace)
 import Data.List (intercalate, elemIndex, find)
+import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust)
 import Numeric (showHex)
 import System.Environment (getArgs)
@@ -206,67 +207,88 @@ generateTextForKeys keys =
   in
   modifier ++ (intercalate "" [generateRow n | n <- [0..3]])
 
-usbHidToText :: Bool -> Int -> (Bool, String)
-usbHidToText shift n = case (shift, n) of
-  (False, n) | n >= 0x04 && n <= 0x1d -> (False, [chr (n - 0x04 + (ord 'a'))])
-  (True, n) | n >= 0x04 && n <= 0x1d -> (False, [chr (n - 0x04 + (ord 'A'))])
-  (False, n) | n >= 0x1e && n <= 0x26 -> (shift, [chr (n - 0x1e + (ord '1'))])
-  (False, 0x27) -> (False, "0")
-  (shift, n) | n >= 0x3a && n <= 0x45 -> (shift, "<F" ++ show (n - 0x39) ++ ">")
-  (True, 0x1e) -> (False, "!")
-  (True, 0x1f) -> (False, "@")
-  (True, 0x20) -> (False, "#")
-  (True, 0x21) -> (False, "$")
-  (True, 0x22) -> (False, "%")
-  (True, 0x23) -> (False, "^")
-  (True, 0x24) -> (False, "&")
-  (True, 0x25) -> (False, "*")
-  (True, 0x26) -> (False, "(")
-  (True, 0x27) -> (False, ")")
-  (_, 0x28) -> (shift, "<return>")
-  (_, 0x29) -> (shift, "<escape>")
-  (_, 0x2a) -> (shift, "<backspace>")
-  (_, 0x2b) -> (shift, "<tab>")
-  (_, 0x2c) -> (shift, "<space>")
-  (False, 0x2d) -> (False, "-")
-  (True, 0x2d) -> (False, "_")
-  (False, 0x2e) -> (False, "=")
-  (True, 0x2e) -> (False, "+")
-  (False, 0x2f) -> (False, "[")
-  (True, 0x2f) -> (False, "{")
-  (False, 0x30) -> (False, "]")
-  (True, 0x30) -> (False, "}")
-  (False, 0x31) -> (False, "\\")
-  (True, 0x31) -> (False, "|")
+data Shifted =
+    Shifted
+  | Unshifted
+  | ShiftAgnostic
+  deriving (Ord, Eq, Show)
+
+
+usbHidTable =
+  [((Unshifted, n), (Unshifted, [chr (n - 0x04 + (ord 'a'))])) | n <- [0x04 ..  0x1d]] ++
+  [((Shifted,  n), (Unshifted, [chr (n - 0x04 + (ord 'A'))])) | n <- [0x04 .. 0x1d]] ++
+  [((Unshifted, n), (Unshifted, [chr (n - 0x1e + (ord '1'))])) | n <- [0x1e .. 0x26]] ++
+  [((Unshifted, 0x27), (Unshifted, "0"))] ++
+  [((ShiftAgnostic, n), (ShiftAgnostic, "<F" ++ show (n - 0x39) ++ ">")) | n <- [0x3a .. 0x45]] ++ [
+  ((Shifted, 0x1e), (Unshifted, "!")),
+  ((Shifted, 0x1f), (Unshifted, "@")),
+  ((Shifted, 0x20), (Unshifted, "#")),
+  ((Shifted, 0x21), (Unshifted, "$")),
+  ((Shifted, 0x22), (Unshifted, "%")),
+  ((Shifted, 0x23), (Unshifted, "^")),
+  ((Shifted, 0x24), (Unshifted, "&")),
+  ((Shifted, 0x25), (Unshifted, "*")),
+  ((Shifted, 0x26), (Unshifted, "(")),
+  ((Shifted, 0x27), (Unshifted, ")")),
+  ((ShiftAgnostic, 0x28), (ShiftAgnostic, "<return>")),
+  ((ShiftAgnostic, 0x29), (ShiftAgnostic, "<escape>")),
+  ((ShiftAgnostic, 0x2a), (ShiftAgnostic, "<backspace>")),
+  ((ShiftAgnostic, 0x2b), (ShiftAgnostic, "<tab>")),
+  ((ShiftAgnostic, 0x2c), (ShiftAgnostic, "<space>")),
+  ((Unshifted, 0x2d), (Unshifted, "-")),
+  ((Shifted, 0x2d), (Unshifted, "_")),
+  ((Unshifted, 0x2e), (Unshifted, "=")),
+  ((Shifted, 0x2e), (Unshifted, "+")),
+  ((Unshifted, 0x2f), (Unshifted, "[")),
+  ((Shifted, 0x2f), (Unshifted, "{")),
+  ((Unshifted, 0x30), (Unshifted, "]")),
+  ((Shifted, 0x30), (Unshifted, "}")),
+  ((Unshifted, 0x31), (Unshifted, "\\")),
+  ((Shifted, 0x31), (Unshifted, "|")),
   -- 0x32: "Non-US # and ~"
-  (False, 0x33) -> (False, ";")
-  (True, 0x33) -> (False, ":")
-  (False, 0x34) -> (False, "'")
-  (True, 0x34) -> (False, "\"")
-  (False, 0x35) -> (False, "`")
-  (True, 0x35) -> (False, "~")
-  (False, 0x36) -> (False, ",")
-  (True, 0x36) -> (False, "<")
-  (False, 0x37) -> (False, ".")
-  (True, 0x37) -> (False, ">")
-  (False, 0x38) -> (False, "/")
-  (True, 0x38) -> (False, "?")
-  (shift, 0x39) -> (shift, "<capslock>")
-  (shift, 0x46) -> (shift, "<printscreen>")
-  (shift, 0x47) -> (shift, "<scrolllock>")
-  (shift, 0x48) -> (shift, "<pause>")
-  (shift, 0x49) -> (shift, "<insert>")
-  (shift, 0x4a) -> (shift, "<home>")
-  (shift, 0x4b) -> (shift, "<pageup>")
-  (shift, 0x4c) -> (shift, "<delete>")
-  (shift, 0x4d) -> (shift, "<end>")
-  (shift, 0x4e) -> (shift, "<pagedown>")
-  (shift, 0x4f) -> (shift, "<right>")
-  (shift, 0x50) -> (shift, "<left>")
-  (shift, 0x51) -> (shift, "<down>")
-  (shift, 0x52) -> (shift, "<up>")
-  (shift, 0x53) -> (shift, "<numlock>")
-  _ -> (shift, "<0x" ++ showHex n ">")
+  ((Unshifted, 0x33), (Unshifted, ";")),
+  ((Shifted, 0x33), (Unshifted, ":")),
+  ((Unshifted, 0x34), (Unshifted, "'")),
+  ((Shifted, 0x34), (Unshifted, "\"")),
+  ((Unshifted, 0x35), (Unshifted, "`")),
+  ((Shifted, 0x35), (Unshifted, "~")),
+  ((Unshifted, 0x36), (Unshifted, ",")),
+  ((Shifted, 0x36), (Unshifted, "<")),
+  ((Unshifted, 0x37), (Unshifted, ".")),
+  ((Shifted, 0x37), (Unshifted, ">")),
+  ((Unshifted, 0x38), (Unshifted, "/")),
+  ((Shifted, 0x38), (Unshifted, "?")),
+  ((ShiftAgnostic, 0x39), (ShiftAgnostic, "<capslock>")),
+  ((ShiftAgnostic, 0x46), (ShiftAgnostic, "<printscreen>")),
+  ((ShiftAgnostic, 0x47), (ShiftAgnostic, "<scrolllock>")),
+  ((ShiftAgnostic, 0x48), (ShiftAgnostic, "<pause>")),
+  ((ShiftAgnostic, 0x49), (ShiftAgnostic, "<insert>")),
+  ((ShiftAgnostic, 0x4a), (ShiftAgnostic, "<home>")),
+  ((ShiftAgnostic, 0x4b), (ShiftAgnostic, "<pageup>")),
+  ((ShiftAgnostic, 0x4c), (ShiftAgnostic, "<delete>")),
+  ((ShiftAgnostic, 0x4d), (ShiftAgnostic, "<end>")),
+  ((ShiftAgnostic, 0x4e), (ShiftAgnostic, "<pagedown>")),
+  ((ShiftAgnostic, 0x4f), (ShiftAgnostic, "<right>")),
+  ((ShiftAgnostic, 0x50), (ShiftAgnostic, "<left>")),
+  ((ShiftAgnostic, 0x51), (ShiftAgnostic, "<down>")),
+  ((ShiftAgnostic, 0x52), (ShiftAgnostic, "<up>")),
+  ((ShiftAgnostic, 0x53), (ShiftAgnostic, "<numlock>"))]
+
+usbHidMap = Map.fromList usbHidTable
+
+usbHidToText :: Bool -> Int -> (Bool, String)
+usbHidToText shift n =
+  let mapShift shift' = case shift' of
+        ShiftAgnostic -> shift
+        Shifted -> True
+        Unshifted -> False
+      unmapShift shift = if shift then Shifted else Unshifted
+  in
+  case usbHidMap Map.!? (unmapShift shift, n) of
+    Just (shift', k) -> (mapShift shift', k)
+    _ -> case usbHidMap Map.!? (ShiftAgnostic, n) of
+      Just (shift', k) -> (mapShift shift', k)
+      _ -> (shift, "<0x" ++ showHex n ">")
 
 
 generateTextConfig :: TwiddlerConfig -> [String]
