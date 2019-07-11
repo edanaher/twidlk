@@ -6,7 +6,7 @@ import qualified Data.Binary.Get as G
 import qualified Data.Binary.Put as P
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BL.Char8
-import Data.Bits ((.&.), shiftL)
+import Data.Bits ((.&.), (.|.), shiftL)
 import Data.Char (chr, ord, isSpace)
 import Data.List (intercalate, elemIndex, find)
 import qualified Data.Map.Strict as Map
@@ -32,10 +32,29 @@ data TwiddlerConfig = TwiddlerConfig {
     mouseAccelFactor :: Int,
     keyRepeatDelay :: Int,
 
-    nchords :: Int,
     chords :: [RawChord]
   }
   deriving Show
+
+defaultTwiddlerConfig = TwiddlerConfig {
+    keyRepeat = False,
+    directKey = False,
+    joystickLeftClick = True,
+    disableBluetooth = False,
+    stickyNum = False,
+    stickyShift = False,
+    hapticFeedback = False,
+
+    sleepTimeout = 1500,
+    mouseLeftClickAction = 0,
+    mouseMiddleClickAction = 0,
+    mouseRightClickAction = 0,
+    mouseAccelFactor = 10,
+    keyRepeatDelay =  100,
+
+    chords = []
+  }
+
 
 data ChordOutput =
     SingleChord { modifier :: Int, keyCode :: Int }
@@ -45,6 +64,70 @@ data ChordOutput =
 
 data RawChord = RawChord { keys :: [Int], output :: ChordOutput }
   deriving Show
+
+usbHidTable =
+  [((Unshifted, n), (Unshifted, [chr (n - 0x04 + (ord 'a'))])) | n <- [0x04 ..  0x1d]] ++
+  [((Shifted,  n), (Unshifted, [chr (n - 0x04 + (ord 'A'))])) | n <- [0x04 .. 0x1d]] ++
+  [((Unshifted, n), (Unshifted, [chr (n - 0x1e + (ord '1'))])) | n <- [0x1e .. 0x26]] ++
+  [((Unshifted, 0x27), (Unshifted, "0"))] ++
+  [((ShiftAgnostic, n), (ShiftAgnostic, "<F" ++ show (n - 0x39) ++ ">")) | n <- [0x3a .. 0x45]] ++ [
+  ((Shifted, 0x1e), (Unshifted, "!")),
+  ((Shifted, 0x1f), (Unshifted, "@")),
+  ((Shifted, 0x20), (Unshifted, "#")),
+  ((Shifted, 0x21), (Unshifted, "$")),
+  ((Shifted, 0x22), (Unshifted, "%")),
+  ((Shifted, 0x23), (Unshifted, "^")),
+  ((Shifted, 0x24), (Unshifted, "&")),
+  ((Shifted, 0x25), (Unshifted, "*")),
+  ((Shifted, 0x26), (Unshifted, "(")),
+  ((Shifted, 0x27), (Unshifted, ")")),
+  ((ShiftAgnostic, 0x28), (ShiftAgnostic, "<return>")),
+  ((ShiftAgnostic, 0x29), (ShiftAgnostic, "<escape>")),
+  ((ShiftAgnostic, 0x2a), (ShiftAgnostic, "<backspace>")),
+  ((ShiftAgnostic, 0x2b), (ShiftAgnostic, "<tab>")),
+  ((ShiftAgnostic, 0x2c), (ShiftAgnostic, "<space>")),
+  ((Unshifted, 0x2d), (Unshifted, "-")),
+  ((Shifted, 0x2d), (Unshifted, "_")),
+  ((Unshifted, 0x2e), (Unshifted, "=")),
+  ((Shifted, 0x2e), (Unshifted, "+")),
+  ((Unshifted, 0x2f), (Unshifted, "[")),
+  ((Shifted, 0x2f), (Unshifted, "{")),
+  ((Unshifted, 0x30), (Unshifted, "]")),
+  ((Shifted, 0x30), (Unshifted, "}")),
+  ((Unshifted, 0x31), (Unshifted, "\\")),
+  ((Shifted, 0x31), (Unshifted, "|")),
+  -- 0x32: "Non-US # and ~"
+  ((Unshifted, 0x33), (Unshifted, ";")),
+  ((Shifted, 0x33), (Unshifted, ":")),
+  ((Unshifted, 0x34), (Unshifted, "'")),
+  ((Shifted, 0x34), (Unshifted, "\"")),
+  ((Unshifted, 0x35), (Unshifted, "`")),
+  ((Shifted, 0x35), (Unshifted, "~")),
+  ((Unshifted, 0x36), (Unshifted, ",")),
+  ((Shifted, 0x36), (Unshifted, "<")),
+  ((Unshifted, 0x37), (Unshifted, ".")),
+  ((Shifted, 0x37), (Unshifted, ">")),
+  ((Unshifted, 0x38), (Unshifted, "/")),
+  ((Shifted, 0x38), (Unshifted, "?")),
+  ((ShiftAgnostic, 0x39), (ShiftAgnostic, "<capslock>")),
+  ((ShiftAgnostic, 0x46), (ShiftAgnostic, "<printscreen>")),
+  ((ShiftAgnostic, 0x47), (ShiftAgnostic, "<scrolllock>")),
+  ((ShiftAgnostic, 0x48), (ShiftAgnostic, "<pause>")),
+  ((ShiftAgnostic, 0x49), (ShiftAgnostic, "<insert>")),
+  ((ShiftAgnostic, 0x4a), (ShiftAgnostic, "<home>")),
+  ((ShiftAgnostic, 0x4b), (ShiftAgnostic, "<pageup>")),
+  ((ShiftAgnostic, 0x4c), (ShiftAgnostic, "<delete>")),
+  ((ShiftAgnostic, 0x4d), (ShiftAgnostic, "<end>")),
+  ((ShiftAgnostic, 0x4e), (ShiftAgnostic, "<pagedown>")),
+  ((ShiftAgnostic, 0x4f), (ShiftAgnostic, "<right>")),
+  ((ShiftAgnostic, 0x50), (ShiftAgnostic, "<left>")),
+  ((ShiftAgnostic, 0x51), (ShiftAgnostic, "<down>")),
+  ((ShiftAgnostic, 0x52), (ShiftAgnostic, "<up>")),
+  ((ShiftAgnostic, 0x53), (ShiftAgnostic, "<numlock>"))]
+
+usbHidMap = Map.fromList usbHidTable
+
+usbHidUnmap = Map.fromList $ flip map usbHidTable $ \((s, k), (s', k')) -> (k', (s, s', k))
 
 readChordMapping :: G.Get ChordOutput
 readChordMapping = do
@@ -118,7 +201,6 @@ readConfig contents = flip G.runGet contents $ do
     disableBluetooth = disableBluetooth,
     stickyNum = stickyNum,
     stickyShift = stickyShift,
-    nchords = nchords,
     sleepTimeout = sleepTimeout,
     mouseLeftClickAction = mouseLeftClickAction,
     mouseMiddleClickAction = mouseMiddleClickAction,
@@ -136,7 +218,6 @@ flagFields = [
   "disableBluetooth",
   "stickyNum",
   "stickyShift",
-  "nchords",
   "sleepTimeout",
   "mouseLeftClickAction",
   "mouseMiddleClickAction",
@@ -175,14 +256,40 @@ readTextConfig contents =
       parseChord k = case find (== '+') k of
         Nothing -> parseMainChord k 0
         Just _ -> parseModifiers (takeWhile (not . (== '+')) k) ++ parseMainChord (tail $ dropWhile (not . (== '+')) k) 0
+      parseOutput v = textToUsb v
       parseRow row = case split row of
         (key, value) -> case find (== key) flagFields of
           Just f -> Left (key, value)
-          Nothing -> Right (parseChord key, value)
+          Nothing -> Right (RawChord (parseChord key) (parseOutput value))
       parsed = map parseRow conf
+
+      readBool str = case read str of
+        0 -> False
+        1 -> True
+        _ -> error $ "Invalid boolean: " ++ str
+
+      addRowToConfig config row = case row of
+        Left ("version", "0") -> config
+        Left ("keyRepeat", v) -> config { keyRepeat = readBool v }
+        Left ("directKey", v) -> config { directKey = readBool v }
+        Left ("joystickLeftClick", v) -> config { joystickLeftClick = readBool v }
+        Left ("disableBluetooth", v) -> config { disableBluetooth = readBool v }
+        Left ("stickyNum", v) -> config { stickyNum = readBool v }
+        Left ("stickyShift", v) -> config { stickyShift = readBool v }
+        Left ("hapticFeedback", v) -> config { hapticFeedback = readBool v }
+
+        Left ("sleepTimeout", v) -> config { sleepTimeout = read v }
+        Left ("mouseLeftClickAction", v) -> config { mouseLeftClickAction = read v }
+        Left ("mouseMiddleClickAction", v) -> config { mouseMiddleClickAction = read v }
+        Left ("mouseRightClickAction", v) -> config { mouseRightClickAction = read v }
+        Left ("mouseAccelFactor", v) -> config { mouseAccelFactor = read v }
+        Left ("keyRepeatDelay", v) -> config { keyRepeatDelay = read v }
+
+        Right (chord) -> config { chords = chords' }
+          where chords' = chords config ++ [chord]
+        _ -> error $ "Bad row: " ++ show row
   in
-  trace (show parsed)
-  error "Uhoh"
+  foldl addRowToConfig defaultTwiddlerConfig parsed
 
 generateTextForKeys :: [Int] -> String
 generateTextForKeys keys =
@@ -214,68 +321,6 @@ data Shifted =
   deriving (Ord, Eq, Show)
 
 
-usbHidTable =
-  [((Unshifted, n), (Unshifted, [chr (n - 0x04 + (ord 'a'))])) | n <- [0x04 ..  0x1d]] ++
-  [((Shifted,  n), (Unshifted, [chr (n - 0x04 + (ord 'A'))])) | n <- [0x04 .. 0x1d]] ++
-  [((Unshifted, n), (Unshifted, [chr (n - 0x1e + (ord '1'))])) | n <- [0x1e .. 0x26]] ++
-  [((Unshifted, 0x27), (Unshifted, "0"))] ++
-  [((ShiftAgnostic, n), (ShiftAgnostic, "<F" ++ show (n - 0x39) ++ ">")) | n <- [0x3a .. 0x45]] ++ [
-  ((Shifted, 0x1e), (Unshifted, "!")),
-  ((Shifted, 0x1f), (Unshifted, "@")),
-  ((Shifted, 0x20), (Unshifted, "#")),
-  ((Shifted, 0x21), (Unshifted, "$")),
-  ((Shifted, 0x22), (Unshifted, "%")),
-  ((Shifted, 0x23), (Unshifted, "^")),
-  ((Shifted, 0x24), (Unshifted, "&")),
-  ((Shifted, 0x25), (Unshifted, "*")),
-  ((Shifted, 0x26), (Unshifted, "(")),
-  ((Shifted, 0x27), (Unshifted, ")")),
-  ((ShiftAgnostic, 0x28), (ShiftAgnostic, "<return>")),
-  ((ShiftAgnostic, 0x29), (ShiftAgnostic, "<escape>")),
-  ((ShiftAgnostic, 0x2a), (ShiftAgnostic, "<backspace>")),
-  ((ShiftAgnostic, 0x2b), (ShiftAgnostic, "<tab>")),
-  ((ShiftAgnostic, 0x2c), (ShiftAgnostic, "<space>")),
-  ((Unshifted, 0x2d), (Unshifted, "-")),
-  ((Shifted, 0x2d), (Unshifted, "_")),
-  ((Unshifted, 0x2e), (Unshifted, "=")),
-  ((Shifted, 0x2e), (Unshifted, "+")),
-  ((Unshifted, 0x2f), (Unshifted, "[")),
-  ((Shifted, 0x2f), (Unshifted, "{")),
-  ((Unshifted, 0x30), (Unshifted, "]")),
-  ((Shifted, 0x30), (Unshifted, "}")),
-  ((Unshifted, 0x31), (Unshifted, "\\")),
-  ((Shifted, 0x31), (Unshifted, "|")),
-  -- 0x32: "Non-US # and ~"
-  ((Unshifted, 0x33), (Unshifted, ";")),
-  ((Shifted, 0x33), (Unshifted, ":")),
-  ((Unshifted, 0x34), (Unshifted, "'")),
-  ((Shifted, 0x34), (Unshifted, "\"")),
-  ((Unshifted, 0x35), (Unshifted, "`")),
-  ((Shifted, 0x35), (Unshifted, "~")),
-  ((Unshifted, 0x36), (Unshifted, ",")),
-  ((Shifted, 0x36), (Unshifted, "<")),
-  ((Unshifted, 0x37), (Unshifted, ".")),
-  ((Shifted, 0x37), (Unshifted, ">")),
-  ((Unshifted, 0x38), (Unshifted, "/")),
-  ((Shifted, 0x38), (Unshifted, "?")),
-  ((ShiftAgnostic, 0x39), (ShiftAgnostic, "<capslock>")),
-  ((ShiftAgnostic, 0x46), (ShiftAgnostic, "<printscreen>")),
-  ((ShiftAgnostic, 0x47), (ShiftAgnostic, "<scrolllock>")),
-  ((ShiftAgnostic, 0x48), (ShiftAgnostic, "<pause>")),
-  ((ShiftAgnostic, 0x49), (ShiftAgnostic, "<insert>")),
-  ((ShiftAgnostic, 0x4a), (ShiftAgnostic, "<home>")),
-  ((ShiftAgnostic, 0x4b), (ShiftAgnostic, "<pageup>")),
-  ((ShiftAgnostic, 0x4c), (ShiftAgnostic, "<delete>")),
-  ((ShiftAgnostic, 0x4d), (ShiftAgnostic, "<end>")),
-  ((ShiftAgnostic, 0x4e), (ShiftAgnostic, "<pagedown>")),
-  ((ShiftAgnostic, 0x4f), (ShiftAgnostic, "<right>")),
-  ((ShiftAgnostic, 0x50), (ShiftAgnostic, "<left>")),
-  ((ShiftAgnostic, 0x51), (ShiftAgnostic, "<down>")),
-  ((ShiftAgnostic, 0x52), (ShiftAgnostic, "<up>")),
-  ((ShiftAgnostic, 0x53), (ShiftAgnostic, "<numlock>"))]
-
-usbHidMap = Map.fromList usbHidTable
-
 usbHidToText :: Bool -> Int -> (Bool, String)
 usbHidToText shift n =
   let mapShift shift' = case shift' of
@@ -290,6 +335,47 @@ usbHidToText shift n =
       Just (shift', k) -> (mapShift shift', k)
       _ -> (shift, "<0x" ++ showHex n ">")
 
+textToUsb' :: String -> [ChordOutput]
+textToUsb' str =
+  let unmapChar :: String -> Bool -> (Bool, Int)
+      unmapChar rawC shift =
+        case usbHidUnmap Map.!? c of
+          Nothing -> error $ "Error: Unknown string: " ++ c
+          Just (Shifted, s', c') -> (True, c')
+          Just (Unshifted, s', c') -> (False, c')
+          Just (ShiftAgnostic, s', c') -> (shift, c')
+        where c = case rawC of
+                [c] -> [c]
+                _ -> '<':rawC++">"
+      isShifted mods = 'S' `elem` mods
+      unmapMods mods = case mods of
+        'C':r -> 0x01 .|. unmapMods r
+        'S':r -> 0x02 .|. unmapMods r
+        'A':r -> 0x04 .|. unmapMods r
+        '4':r -> 0x08 .|. unmapMods r
+        [] -> 0
+      mergeMods mods (shift, code) =
+        SingleChord shiftedMods code
+        where shiftedMods = if shift then mods .|. 0x02 else mods
+  in case str of
+    '\\':c:r -> mergeMods 0 (unmapChar [c] False) :textToUsb' r
+    '<':r -> mergeMods (unmapMods mod) (shift, keycode):textToUsb' (tail rest')
+      where (prefix, rest) = break (== '>') r
+            (mod', char) =  break (== '-') prefix
+            (mod, char') = if char == "" then ("", mod') else (mod', tail char)
+            (char'', rest') = case (char', rest) of
+                ("", ('>':'>':r')) -> (">", '>':r')
+                _ -> (char', rest)
+            (shift, keycode) = unmapChar char'' (isShifted mod)
+    c:r -> mergeMods 0 (unmapChar [c] False):textToUsb' r
+    [] -> []
+
+textToUsb :: String -> ChordOutput
+textToUsb str =
+  case textToUsb' str of
+    [] -> error "Empty chord?"
+    [h] -> h
+    l -> MultipleChord l
 
 generateTextConfig :: TwiddlerConfig -> [String]
 generateTextConfig config =
@@ -302,10 +388,14 @@ generateTextConfig config =
                  (if m .&. 0x20 /= 0 then "S" else "") ++
                  (if m .&. 0x40 /= 0 then "A" else "") ++
                  (if m .&. 0x80 /= 0 then "4" else "")
-        in if m' == "" then "" else m' ++ "-"
+        in if m' == "" then "" else "<" ++ m' ++ "-"
       renderSingleChord (SingleChord m c) =
         let (shift, c') = usbHidToText (m .&. 0x22 /= 0) c
-        in renderModifiers (m .&. (if shift then 0xFF else 0xDD)) ++ c'
+            mods = renderModifiers $ m .&. (if shift then 0xFF else 0xDD)
+            suffix = if mods == "" then "" else ">"
+            escape = if c' == "<" && mods == "" then "\\" else ""
+            c'' = if mods /= "" && head c' == '<' && last c' == '>' then reverse (tail $ reverse $ tail c') else c'
+        in  mods ++ escape ++ c'' ++ suffix
       renderSingleChord _ = error "Rending multichord as singlechord"
       renderChord (RawChord { keys=keys, output = output }) =
         case output of
@@ -371,7 +461,7 @@ generateBinConfig config =
   in P.runPut $ do
   P.putWord8 5
   P.putWord8 $ flags
-  P.putWord16le $ fromIntegral $ nchords config
+  P.putWord16le $ fromIntegral $ length $ chords config
   P.putWord16le $ fromIntegral $ sleepTimeout config
   P.putWord16le $ fromIntegral $ mouseLeftClickAction config
   P.putWord16le $ fromIntegral $ mouseMiddleClickAction config
