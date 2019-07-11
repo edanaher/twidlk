@@ -353,10 +353,14 @@ textToUsb' str =
         'S':r -> 0x02 .|. unmapMods r
         'A':r -> 0x04 .|. unmapMods r
         '4':r -> 0x08 .|. unmapMods r
+        'R':'C':r -> 0x10 .|. unmapMods r
+        'R':'S':r -> 0x20 .|. unmapMods r
+        'R':'A':r -> 0x40 .|. unmapMods r
+        'R':'4':r -> 0x80 .|. unmapMods r
         [] -> 0
       mergeMods mods (shift, code) =
         SingleChord shiftedMods code
-        where shiftedMods = if shift then mods .|. 0x02 else mods
+        where shiftedMods = if shift then mods .|. 0x20 else mods -- Use right shift by default to match the tekgear Tuner.
   in case str of
     '\\':c:r -> mergeMods 0 (unmapChar [c] False) :textToUsb' r
     '<':r -> mergeMods (unmapMods mod) (shift, keycode):textToUsb' (tail rest')
@@ -384,10 +388,10 @@ generateTextConfig config =
                  (if m .&. 0x02 /= 0 then "S" else "") ++
                  (if m .&. 0x04 /= 0 then "A" else "") ++
                  (if m .&. 0x08 /= 0 then "4" else "") ++
-                 (if m .&. 0x10 /= 0 then "C" else "") ++
-                 (if m .&. 0x20 /= 0 then "S" else "") ++
-                 (if m .&. 0x40 /= 0 then "A" else "") ++
-                 (if m .&. 0x80 /= 0 then "4" else "")
+                 (if m .&. 0x10 /= 0 then "RC" else "") ++
+                 (if m .&. 0x20 /= 0 then "RS" else "") ++
+                 (if m .&. 0x40 /= 0 then "RA" else "") ++
+                 (if m .&. 0x80 /= 0 then "R4" else "")
         in if m' == "" then "" else "<" ++ m' ++ "-"
       renderSingleChord (SingleChord m c) =
         let (shift, c') = usbHidToText (m .&. 0x22 /= 0) c
