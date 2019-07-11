@@ -8,7 +8,8 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BL.Char8
 import Data.Bits ((.&.), (.|.), shiftL)
 import Data.Char (chr, ord, isSpace)
-import Data.List (intercalate, elemIndex, find)
+import Data.List (intercalate, elemIndex, find, sortBy)
+import Data.Ord (comparing)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust)
 import Numeric (showHex)
@@ -441,9 +442,10 @@ generateBinConfig config =
               _ -> False) $ chords config
       baseStringContentLocation = 16 + 4 * length (chords config) + 4 * length stringContents
       stringLocations = reverse $ snd $ foldl (\(last, acc) str -> (last + 2 + 2*length str, last:acc)) (baseStringContentLocation, []) stringContents
+      keyListToInt = foldl (+) 0 . map (1 `shiftL`)
       chordToInt :: RawChord -> P.Put
       chordToInt (RawChord keys output) = do
-        P.putWord16le $ foldl (+) 0 $ map (1 `shiftL`) keys
+        P.putWord16le $ keyListToInt keys
         case output of
           SingleChord m k -> do
             P.putWord8 $ fromIntegral m
@@ -453,7 +455,9 @@ generateBinConfig config =
             P.putWord8 $ fromIntegral $ fromJust $ elemIndex mcc stringContents
 
       -- TODO: Sort the chords "in ascending order of Chord Representation Value"
-      chordsTable = mapM_ chordToInt $ chords config
+      chordSortOrder (RawChord keys output) = keyListToInt keys
+      sortedChords = sortBy (comparing chordSortOrder) $ chords config
+      chordsTable = mapM_ chordToInt sortedChords
       writeStringContent :: [ChordOutput] -> P.Put
       writeStringContent cs = do
         P.putWord16le $ fromIntegral $ 2 + 2 * length cs
