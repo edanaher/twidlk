@@ -492,7 +492,7 @@ main = do
       [ f ] -> return f
       _ -> error "Requires a filename as argument"
   contents <- BL.readFile filename
-  inputIsText <- return $ BL.take 9 contents == BL.Char8.pack "version 0"
+  inputIsText <- return $ BL.take 10 contents == BL.Char8.pack "version 0\n"
   config <- if inputIsText then
       return $ readTextConfig contents
     else
