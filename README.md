@@ -50,11 +50,13 @@ Output sequences are a bit more complex.
 
 Most characters represent themselves: "s" will send an "s", and "&" will send an "&".  However, due to how the USB HID codes work, "&" will actually send "shift-7", using the right shift key.  This usually shouldn't be an issue, but it might come up.  Moreover, if you have a chord mapping to a lowercase letter, shift plus the chord will default to the capital letter.
 
-For non-printable or modified characters, brackets are used: `<space>` is the spacebar, `<return> is the return key, etc.  To modify a key, put it in brackets with the modifer(s) and a dash: "C" for Control, "S" for shift, "A" for alt, or "4" for the Windows/Super/Apple key.  (I use Linux.  It's modifier 4 there, so that's what I picked.)  By default, these use the left modifier; prepend "R" to use the right modifier.
+For non-printable or modified characters, angle brackets are used: `<space>` is the spacebar, `<return>` is the return key, etc.  To modify a key, put it in angle brackets with the modifer(s) and a dash: "C" for Control, "S" for shift, "A" for alt, or "4" for the Windows/Super/Apple key.  (I use Linux.  It's modifier 4 there, so that's what I picked.)  By default, these use the left modifier; prepend "R" to use the right modifier.
 
-So "<C-s>" is control-s, "<4-enter>" is Super-enter, "<RA-`>" is right-alt backquote, and "<CRS-backspace>"
+So `<C-s>` is control-s, `<4-enter>` is Windows-enter, `<RA-">` is right-alt double quote, and `<CRS-backspace>` is control right-shift  backspace.
 
 To send a literal `<`, use `\<`; otherwise it would be interpreted as the start of a longer sequence.  And note that `<C->>` does work as expected; it sends control-greater-than, though it looks kind of funny.
+
+Multiple character chords just concatenate the characters: `st` sends `s` followed by `t`; `<escape>:wi` sends escape, colon, w, and i.  Note that modifiers only modify a single character: to send control-x followed by control-s, use `<C-x><C-s>`.  If you used `<C-x>s`, the s would not have the control modifier.
 
 As a side note, the official twiddler tuner uses RS by default for symbols that are automatically shifted; twidlk follows this so that converting a config file from the tuner to text and back to the binary config is identical to the original file.  (E.g., `&` is equivalent to `<RS-7>`; it could just as well be `<S-7>`)
 
