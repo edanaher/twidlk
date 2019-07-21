@@ -13,7 +13,10 @@ import Data.Ord (comparing)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust)
 import Numeric (showHex)
+import System.Directory (doesFileExist, getModificationTime)
 import System.Environment (getArgs)
+import System.FilePath (dropExtension, addExtension)
+
 
 import Debug.Trace (trace)
 
@@ -489,10 +492,23 @@ main = do
       [ f ] -> return f
       _ -> error "Requires a filename as argument"
   contents <- BL.readFile filename
-  config <-
-    if BL.take 9 contents == BL.Char8.pack "version 0" then
+  inputIsText <- return $ BL.take 9 contents == BL.Char8.pack "version 0"
+  config <- if inputIsText then
       return $ readTextConfig contents
     else
       return $ readConfig contents
-  writeFile "output.txt" $ unlines $ generateTextConfig config
-  BL.writeFile "output.cfg" $ generateBinConfig config
+  newExtension <- return $ if inputIsText then "cfg" else "txt"
+  newFilename <- return $ addExtension (dropExtension filename) newExtension
+  doesFileExist newFilename >>= \exists -> if exists then do
+    sourceModificationTime <- getModificationTime filename
+    targetModificationTime <- getModificationTime newFilename
+    if sourceModificationTime <= targetModificationTime then
+      error $ "Refusing to overwrite more-recently modified file " ++ newFilename
+    else
+      return ()
+  else
+    return ()
+  if inputIsText then
+    BL.writeFile newFilename $ generateBinConfig config
+  else
+    writeFile newFilename $ unlines $ generateTextConfig config
